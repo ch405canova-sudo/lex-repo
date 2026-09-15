@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Logs
+*.log
+
+# Embedding DB (locally generated)
+.embed_index.db
+
+# IDE / Editor
+.vscode/
+.idea/
+
+# Test artifacts
+.pytest_out.txt
+.pytest_cache/
+.mypy_cache/
+STATUS.md
