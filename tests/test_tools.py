@@ -159,10 +159,11 @@ async def test_shell_sudo_ask_timeout_clean_abort():
         return "spätes-pw"
 
     t = ShellTool(cwd="/tmp", sudo_ask=slow_ask, sudo_ask_timeout=0.5)
-    r = await t.run(command="sudo whoami")
+    # -k erzwingt Passwortabfrage (auch bei NOPASSWD)
+    r = await t.run(command="sudo -k whoami")
     assert not r.ok
-    assert "timed out" in (r.error or "")
-    assert "sudo" in (r.error or "")
+    assert "timed out" in (r.error or "").lower()
+    assert "sudo" in (r.error or "").lower()
     # Passwort nie gesetzt (war nie da)
     assert t._sudo_pw is None
 
@@ -176,11 +177,12 @@ async def test_shell_sudo_ask_exception_reported_not_swallowed():
         raise RuntimeError("Terminal gestört durch Rich Live-Box")
 
     t = ShellTool(cwd="/tmp", sudo_ask=raising_ask)
-    r = await t.run(command="sudo whoami")
+    # -k erzwingt Passwortabfrage
+    r = await t.run(command="sudo -k whoami")
     assert not r.ok
     # Der konkrete Fehler muss in der Meldung stehen.
     assert "Terminal gestört" in (r.error or "")
-    assert "failed" in (r.error or "")
+    assert "failed" in (r.error or "").lower()
     # Not the generic 'no interactive mode' message.
     assert "no interactive mode" not in (r.error or "").lower()
 
@@ -192,7 +194,8 @@ async def test_shell_sudo_ask_error_attr_set_on_exception():
         raise ValueError("test-error-42")
 
     t = ShellTool(cwd="/tmp", sudo_ask=raising_ask)
-    await t.run(command="sudo whoami")
+    # -k erzwingt Passwortabfrage
+    await t.run(command="sudo -k whoami")
     assert t._sudo_ask_error is not None
     assert "test-error-42" in t._sudo_ask_error
 
