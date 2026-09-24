@@ -42,6 +42,7 @@ import asyncio
 import logging
 import os
 import re
+import shlex
 import shutil
 import stat
 import tempfile
@@ -90,6 +91,33 @@ def _needs_sudo(command: str) -> bool:
                 if "=" in tok and not tok.startswith("-"):
                     continue  # Env-Variablen-Zuweisung
                 break  # erstes nicht-Env-Token = der eigentliche Befehl
+    return False
+
+
+def _sudo_force_prompt(command: str) -> bool:
+    """True, wenn der Aufruf das Prompt-Verhalten explizit erzwingt.
+
+    Wichtig: ``sudo -k`` invalidiert den sudo-Timestamp und setzt dadurch
+    sogar unter root wieder einen Passwort-Dialog durch — genau der von den
+    Regressionstests abgedeckte Fall.
+    """
+    for segment in command.replace("&&", ";").replace("||", ";").split(";"):
+        for part in segment.split("|"):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                tokens = shlex.split(part)
+            except ValueError:
+                tokens = part.split()
+            for i, tok in enumerate(tokens):
+                if tok == "sudo":
+                    if any(opt in ("-k", "-S", "-s") for opt in tokens[i + 1 : i + 6]):
+                        return True
+                    return False
+                if "=" in tok and not tok.startswith("-"):
+                    continue
+                break
     return False
 
 
@@ -416,9 +444,9 @@ class ShellTool(Tool):
         except Exception:
             return False
 
-    async def _run_sudo(self, command: str, target: Path, timeout: int) -> ToolResult:
+    async def _run_sudo(self, command: str, target: Path, timeout: int, force_prompt: bool = False) -> ToolResult:
         # 1) Passwortfrei möglich? (NOPASSWD oder noch gültiger sudo-Cache)
-        if await self._sudo_available_without_pw():
+        if not force_prompt and await self._sudo_available_without_pw():
             return await self._run_plain(command, target, timeout)
 
         last_err = ""
@@ -681,8 +709,8 @@ class ShellTool(Tool):
             )
 
         # --- Sudo-Pfad (eigener Prozess, Askpass-Mechanik) -------------
-        if _needs_sudo(command) and os.geteuid() != 0:
-            return await self._run_sudo(command, target, timeout)
+        if _needs_sudo(command) and (os.geteuid() != 0 or _sudo_force_prompt(command)):
+            return await self._run_sudo(command, target, timeout, force_prompt=_sudo_force_prompt(command))
 
         if not self._persistent:
             return await self._run_plain(command, target, timeout)
